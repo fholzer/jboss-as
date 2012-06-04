@@ -142,6 +142,14 @@ fi
 if [ "x$JBOSS_CONFIG_DIR" = "x" ]; then
    JBOSS_CONFIG_DIR="$JBOSS_BASE_DIR/configuration"
 fi
+# use APP_NAME
+if [ "x$APP_NAME" != "x" ]; then
+   JBOSS_APP_NAME="-Dapp=$APP_NAME"
+fi
+# use PROPERTIES
+if [ "x$PROPERTIES" != "x" ]; then
+   JBOSS_PROPERTIES="-P '$PROPERTIES'"
+fi
 
 # For Cygwin, switch paths to Windows format before running java
 if $cygwin; then
@@ -164,72 +172,41 @@ echo "  JAVA: $JAVA"
 echo ""
 echo "  JAVA_OPTS: $JAVA_OPTS"
 echo ""
+echo "  PROPERTIES: $PROPERTIES"
+echo ""
+echo "  APP_NAME: $APP_NAME"
+echo ""
 echo "========================================================================="
 echo ""
 
-while true; do
-   if [ "x$LAUNCH_JBOSS_IN_BACKGROUND" = "x" ]; then
-      # Execute the JVM in the foreground
-      eval \"$JAVA\" -D\"[Standalone]\" $JAVA_OPTS \
-         \"-Dorg.jboss.boot.log.file=$JBOSS_LOG_DIR/boot.log\" \
-         \"-Dlogging.configuration=file:$JBOSS_CONFIG_DIR/logging.properties\" \
-         -jar \"$JBOSS_HOME/jboss-modules.jar\" \
-         -mp \"${JBOSS_MODULEPATH}\" \
-         -jaxpmodule "javax.xml.jaxp-provider" \
-         org.jboss.as.standalone \
-         -Djboss.home.dir=\"$JBOSS_HOME\" \
-         -Djboss.server.base.dir=\"$JBOSS_BASE_DIR\" \
-         "$@"
-      JBOSS_STATUS=$?
-   else
-      # Execute the JVM in the background
-      eval \"$JAVA\" -D\"[Standalone]\" $JAVA_OPTS \
-         \"-Dorg.jboss.boot.log.file=$JBOSS_LOG_DIR/boot.log\" \
-         \"-Dlogging.configuration=file:$JBOSS_CONFIG_DIR/logging.properties\" \
-         -jar \"$JBOSS_HOME/jboss-modules.jar\" \
-         -mp \"${JBOSS_MODULEPATH}\" \
-         -jaxpmodule "javax.xml.jaxp-provider" \
-         org.jboss.as.standalone \
-         -Djboss.home.dir=\"$JBOSS_HOME\" \
-         -Djboss.server.base.dir=\"$JBOSS_BASE_DIR\" \
-         "$@" "&"
-      JBOSS_PID=$!
-      # Trap common signals and relay them to the jboss process
-      trap "kill -HUP  $JBOSS_PID" HUP
-      trap "kill -TERM $JBOSS_PID" INT
-      trap "kill -QUIT $JBOSS_PID" QUIT
-      trap "kill -PIPE $JBOSS_PID" PIPE
-      trap "kill -TERM $JBOSS_PID" TERM
-      if [ "x$JBOSS_PIDFILE" != "x" ]; then
-        echo $JBOSS_PID > $JBOSS_PIDFILE
-      fi
-      # Wait until the background process exits
-      WAIT_STATUS=128
-      while [ "$WAIT_STATUS" -ge 128 ]; do
-         wait $JBOSS_PID 2>/dev/null
-         WAIT_STATUS=$?
-         if [ "$WAIT_STATUS" -gt 128 ]; then
-            SIGNAL=`expr $WAIT_STATUS - 128`
-            SIGNAL_NAME=`kill -l $SIGNAL`
-            echo "*** JBossAS process ($JBOSS_PID) received $SIGNAL_NAME signal ***" >&2
-         fi
-      done
-      if [ "$WAIT_STATUS" -lt 127 ]; then
-         JBOSS_STATUS=$WAIT_STATUS
-      else
-         JBOSS_STATUS=0
-      fi
-      if [ "$JBOSS_STATUS" -ne 10 ]; then
-            # Wait for a complete shudown
-            wait $JBOSS_PID 2>/dev/null
-      fi
-      if [ "x$JBOSS_PIDFILE" != "x" ]; then
-            grep "$JBOSS_PID" $JBOSS_PIDFILE && rm $JBOSS_PIDFILE
-      fi
+if [ "x$LAUNCH_JBOSS_IN_BACKGROUND" = "x" ]; then
+   # Execute the JVM in the foreground
+   eval \"$JAVA\" $JBOSS_APP_NAME -D\"[Standalone]\" $JAVA_OPTS \
+      \"-Dorg.jboss.boot.log.file=$JBOSS_LOG_DIR/boot.log\" \
+      \"-Dlogging.configuration=file:$JBOSS_CONFIG_DIR/logging.properties\" \
+      -jar \"$JBOSS_HOME/jboss-modules.jar\" \
+      -mp \"${JBOSS_MODULEPATH}\" \
+      -jaxpmodule "javax.xml.jaxp-provider" \
+      org.jboss.as.standalone \
+      -Djboss.home.dir=\"$JBOSS_HOME\" $JBOSS_PROPERTIES \
+      -Djboss.server.base.dir=\"$JBOSS_BASE_DIR\" \
+      "$@"
+   JBOSS_STATUS=$?
+else
+   # Execute the JVM in the background
+   eval nohup \"$JAVA\" $JBOSS_APP_NAME -D\"[Standalone]\" $JAVA_OPTS \
+      \"-Dorg.jboss.boot.log.file=$JBOSS_LOG_DIR/boot.log\" \
+      \"-Dlogging.configuration=file:$JBOSS_CONFIG_DIR/logging.properties\" \
+      -jar \"$JBOSS_HOME/jboss-modules.jar\" \
+      -mp \"${JBOSS_MODULEPATH}\" \
+      -jaxpmodule "javax.xml.jaxp-provider" \
+      org.jboss.as.standalone \
+      -Djboss.home.dir=\"$JBOSS_HOME\" $JBOSS_PROPERTIES \
+      -Djboss.server.base.dir=\"$JBOSS_BASE_DIR\" \
+      "$@" '>/dev/null' '2>&1' '&'
+   JBOSS_PID=$!
+
+   if [ "x$JBOSS_PIDFILE" != "x" ]; then
+      echo $JBOSS_PID > $JBOSS_PIDFILE
    fi
-   if [ "$JBOSS_STATUS" -eq 10 ]; then
-      echo "Restarting JBoss..."
-   else
-      exit $JBOSS_STATUS
-   fi
-done
+fi
